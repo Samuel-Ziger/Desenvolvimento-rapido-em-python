@@ -1,3 +1,17 @@
+"""Aplicação desktop para cadastro de alunos, disciplinas e notas.
+
+Tecnologias:
+- Interface gráfica com tkinter/ttk
+- Persistência de dados em SQLite (sqlite3)
+- Exportação/backup em JSON
+
+Estrutura geral:
+- Abas independentes para Alunos, Disciplinas e Notas
+- Cada aba implementa:
+  - construção da UI (_build)
+  - carregamento/listagem (refresh)
+  - operações CRUD básicas
+"""
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
@@ -12,9 +26,17 @@ DB_FILE = "escola.db"
 JSON_FILE = "escola_backup.json"
 
 def get_conn():
+    """Abre e retorna uma conexão SQLite para o arquivo de banco DB_FILE."""
     return sqlite3.connect(DB_FILE)
 
 def init_db():
+    """Cria as tabelas necessárias caso ainda não existam.
+
+    Tabelas:
+    - ALUNO (MATRICULA, NOME, DT_NASCIMENTO)
+    - DISCIPLINA (ID, NOME, TURNO, SALA, PROFESSOR)
+    - NOTA (VALOR, MATRICULA, DISCIPLINA_ID)
+    """
     conn = get_conn()
     c = conn.cursor()
     c.executescript("""
@@ -46,6 +68,10 @@ def init_db():
 # PERSISTÊNCIA JSON
 # ──────────────────────────────────────────────
 def export_json():
+    """Exporta todo o conteúdo do banco para um arquivo JSON (backup leve).
+
+    O arquivo de saída é definido por JSON_FILE.
+    """
     conn = get_conn()
     c = conn.cursor()
     data = {
@@ -77,6 +103,7 @@ CORES = {
 }
 
 def styled_button(parent, text, command, color=None, **kw):
+    """Cria um botão estilizado consistente com a paleta do app."""
     color = color or CORES["accent"]
     btn = tk.Button(
         parent, text=text, command=command,
@@ -89,6 +116,7 @@ def styled_button(parent, text, command, color=None, **kw):
     return btn
 
 def label_entry(parent, text, row, var=None, width=30):
+    """Adiciona label + entry alinhados em grid, usados nos formulários."""
     tk.Label(parent, text=text, bg=CORES["surface"], fg=CORES["subtext"],
              font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", pady=4, padx=8)
     e = tk.Entry(parent, textvariable=var, width=width,
@@ -99,6 +127,7 @@ def label_entry(parent, text, row, var=None, width=30):
     return e
 
 def label_combo(parent, text, row, values, var=None, width=28):
+    """Adiciona label + combobox (readonly) alinhados em grid."""
     tk.Label(parent, text=text, bg=CORES["surface"], fg=CORES["subtext"],
              font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", pady=4, padx=8)
     cb = ttk.Combobox(parent, textvariable=var, values=values,
@@ -107,6 +136,7 @@ def label_combo(parent, text, row, values, var=None, width=28):
     return cb
 
 def make_treeview(parent, cols, col_names, heights=12):
+    """Cria um Treeview com barras de rolagem e estilo customizado."""
     style = ttk.Style()
     style.theme_use("clam")
     style.configure("Custom.Treeview",
@@ -144,12 +174,14 @@ def make_treeview(parent, cols, col_names, heights=12):
 # ABA ALUNO
 # ──────────────────────────────────────────────
 class AbaAluno(tk.Frame):
+    """Aba responsável pelo CRUD de alunos."""
     def __init__(self, parent):
         super().__init__(parent, bg=CORES["bg"])
         self._build()
         self.refresh()
 
     def _build(self):
+        """Monta o formulário, botões de ação e a grade de listagem."""
         # ── Formulário
         form = tk.LabelFrame(self, text=" Dados do Aluno ", bg=CORES["surface"],
                              fg=CORES["accent2"], font=("Segoe UI", 10, "bold"),
@@ -181,6 +213,7 @@ class AbaAluno(tk.Frame):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
     def refresh(self):
+        """Recarrega os registros da tabela ALUNO na grade e exporta JSON."""
         for row in self.tree.get_children():
             self.tree.delete(row)
         conn = get_conn()
@@ -190,6 +223,7 @@ class AbaAluno(tk.Frame):
         export_json()
 
     def _on_select(self, _=None):
+        """Preenche o formulário com a linha selecionada na listagem."""
         sel = self.tree.selection()
         if not sel:
             return
@@ -197,6 +231,7 @@ class AbaAluno(tk.Frame):
         self.v_mat.set(v[0]); self.v_nome.set(v[1]); self.v_dt.set(v[2])
 
     def _validate(self):
+        """Valida os campos obrigatórios e o formato da data."""
         if not self.v_mat.get().strip():
             messagebox.showwarning("Atenção", "Matrícula é obrigatória."); return False
         if not self.v_nome.get().strip():
@@ -208,6 +243,7 @@ class AbaAluno(tk.Frame):
         return True
 
     def incluir(self):
+        """Insere um novo aluno na tabela ALUNO."""
         if not self._validate(): return
         try:
             conn = get_conn()
@@ -220,6 +256,7 @@ class AbaAluno(tk.Frame):
             messagebox.showerror("Erro", "Matrícula já cadastrada.")
 
     def alterar(self):
+        """Atualiza o registro do aluno selecionado."""
         if not self._validate(): return
         conn = get_conn()
         conn.execute("UPDATE ALUNO SET NOME=?, DT_NASCIMENTO=? WHERE MATRICULA=?",
@@ -229,6 +266,7 @@ class AbaAluno(tk.Frame):
         messagebox.showinfo("Sucesso", "Aluno alterado com sucesso!")
 
     def excluir(self):
+        """Remove um aluno e suas notas associadas (chave estrangeira)."""
         mat = self.v_mat.get().strip()
         if not mat:
             messagebox.showwarning("Atenção", "Selecione um aluno."); return
@@ -242,18 +280,21 @@ class AbaAluno(tk.Frame):
         messagebox.showinfo("Sucesso", "Aluno excluído.")
 
     def limpar(self):
+        """Limpa os campos do formulário."""
         self.v_mat.set(""); self.v_nome.set(""); self.v_dt.set("")
 
 # ──────────────────────────────────────────────
 # ABA DISCIPLINA
 # ──────────────────────────────────────────────
 class AbaDisciplina(tk.Frame):
+    """Aba responsável pelo CRUD de disciplinas."""
     def __init__(self, parent):
         super().__init__(parent, bg=CORES["bg"])
         self._build()
         self.refresh()
 
     def _build(self):
+        """Monta o formulário, botões de ação e a grade de listagem."""
         form = tk.LabelFrame(self, text=" Dados da Disciplina ", bg=CORES["surface"],
                              fg=CORES["accent2"], font=("Segoe UI", 10, "bold"),
                              bd=1, relief="groove", labelanchor="nw")
@@ -286,6 +327,7 @@ class AbaDisciplina(tk.Frame):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
     def refresh(self):
+        """Recarrega os registros da tabela DISCIPLINA na grade e exporta JSON."""
         for r in self.tree.get_children(): self.tree.delete(r)
         conn = get_conn()
         for r in conn.execute("SELECT ID,NOME,TURNO,SALA,PROFESSOR FROM DISCIPLINA ORDER BY NOME"):
@@ -293,6 +335,7 @@ class AbaDisciplina(tk.Frame):
         conn.close(); export_json()
 
     def _on_select(self, _=None):
+        """Preenche o formulário com a linha selecionada na listagem."""
         sel = self.tree.selection()
         if not sel: return
         v = self.tree.item(sel[0])["values"]
@@ -300,6 +343,7 @@ class AbaDisciplina(tk.Frame):
         self.v_sala.set(v[3]); self.v_prof.set(v[4])
 
     def _validate(self):
+        """Valida campos obrigatórios da disciplina."""
         if not self.v_nome.get().strip():
             messagebox.showwarning("Atenção", "Nome é obrigatório."); return False
         if not self.v_turno.get():
@@ -311,6 +355,7 @@ class AbaDisciplina(tk.Frame):
         return True
 
     def incluir(self):
+        """Insere uma nova disciplina."""
         if not self._validate(): return
         conn = get_conn()
         conn.execute("INSERT INTO DISCIPLINA (NOME,TURNO,SALA,PROFESSOR) VALUES (?,?,?,?)",
@@ -321,6 +366,7 @@ class AbaDisciplina(tk.Frame):
         messagebox.showinfo("Sucesso", "Disciplina incluída!")
 
     def alterar(self):
+        """Atualiza a disciplina selecionada."""
         if not self.v_id.get():
             messagebox.showwarning("Atenção", "Selecione uma disciplina."); return
         if not self._validate(): return
@@ -333,6 +379,7 @@ class AbaDisciplina(tk.Frame):
         messagebox.showinfo("Sucesso", "Disciplina alterada!")
 
     def excluir(self):
+        """Remove uma disciplina e notas associadas à disciplina."""
         if not self.v_id.get():
             messagebox.showwarning("Atenção", "Selecione uma disciplina."); return
         if not messagebox.askyesno("Confirmar", "Excluir esta disciplina?"):
@@ -345,6 +392,7 @@ class AbaDisciplina(tk.Frame):
         messagebox.showinfo("Sucesso", "Disciplina excluída.")
 
     def limpar(self):
+        """Limpa os campos do formulário."""
         self.v_id.set(""); self.v_nome.set(""); self.v_turno.set("")
         self.v_sala.set(""); self.v_prof.set("")
 
@@ -352,24 +400,28 @@ class AbaDisciplina(tk.Frame):
 # ABA NOTA
 # ──────────────────────────────────────────────
 class AbaNota(tk.Frame):
+    """Aba responsável pelo CRUD de notas, vinculando aluno e disciplina."""
     def __init__(self, parent):
         super().__init__(parent, bg=CORES["bg"])
         self._build()
         self.refresh()
 
     def _get_alunos(self):
+        """Retorna lista (matricula, nome) de alunos para popular combobox."""
         conn = get_conn()
         rows = conn.execute("SELECT MATRICULA, NOME FROM ALUNO ORDER BY NOME").fetchall()
         conn.close()
         return rows
 
     def _get_disciplinas(self):
+        """Retorna lista (id, nome) de disciplinas para popular combobox."""
         conn = get_conn()
         rows = conn.execute("SELECT ID, NOME FROM DISCIPLINA ORDER BY NOME").fetchall()
         conn.close()
         return rows
 
     def _build(self):
+        """Monta o formulário de lançamento de notas e a grade de listagem."""
         form = tk.LabelFrame(self, text=" Lançamento de Nota ", bg=CORES["surface"],
                              fg=CORES["accent2"], font=("Segoe UI", 10, "bold"),
                              bd=1, relief="groove", labelanchor="nw")
@@ -403,9 +455,10 @@ class AbaNota(tk.Frame):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
     def _reload_combos(self):
+        """Atualiza as listas de alunos/disciplinas após mudanças nas outras abas."""
         self.aluno_data = self._get_alunos()
         self.disc_data  = self._get_disciplinas()
-        # Atualiza os widgets Combobox
+        # Atualiza os widgets Combobox (reconstrução rápida da seção)
         for widget in self.winfo_children():
             if isinstance(widget, tk.LabelFrame):
                 for child in widget.winfo_children():
@@ -419,6 +472,7 @@ class AbaNota(tk.Frame):
         self.refresh()
 
     def refresh(self):
+        """Recarrega as notas juntando informações de aluno e disciplina."""
         for r in self.tree.get_children(): self.tree.delete(r)
         conn = get_conn()
         sql = """
@@ -433,6 +487,7 @@ class AbaNota(tk.Frame):
         conn.close(); export_json()
 
     def _on_select(self, _=None):
+        """Preenche o formulário com os dados da linha selecionada."""
         sel = self.tree.selection()
         if not sel: return
         v = self.tree.item(sel[0])["values"]
@@ -450,6 +505,7 @@ class AbaNota(tk.Frame):
         self.v_valor.set(str(valor))
 
     def _parse_sel(self):
+        """Extrai matrícula e id de disciplina a partir dos textos selecionados."""
         a = self.v_aluno.get()
         d = self.v_disc.get()
         if not a or not d:
@@ -459,6 +515,7 @@ class AbaNota(tk.Frame):
         return mat, disc_id
 
     def _parse_valor(self):
+        """Valida e converte a nota para float no intervalo [0, 10]."""
         try:
             v = float(self.v_valor.get().replace(",","."))
             if not 0 <= v <= 10:
@@ -469,6 +526,7 @@ class AbaNota(tk.Frame):
             return None
 
     def incluir(self):
+        """Insere uma nova nota para o par (aluno, disciplina)."""
         mat, disc_id = self._parse_sel()
         if mat is None: return
         valor = self._parse_valor()
@@ -483,6 +541,7 @@ class AbaNota(tk.Frame):
             messagebox.showerror("Erro", "Nota já cadastrada para este aluno/disciplina. Use Alterar.")
 
     def alterar(self):
+        """Atualiza a nota existente para o par (aluno, disciplina)."""
         mat, disc_id = self._parse_sel()
         if mat is None: return
         valor = self._parse_valor()
@@ -495,6 +554,7 @@ class AbaNota(tk.Frame):
         messagebox.showinfo("Sucesso", "Nota alterada!")
 
     def excluir(self):
+        """Remove a nota do par (aluno, disciplina)."""
         mat, disc_id = self._parse_sel()
         if mat is None: return
         if not messagebox.askyesno("Confirmar", "Excluir esta nota?"): return
@@ -508,6 +568,7 @@ class AbaNota(tk.Frame):
 # JANELA PRINCIPAL
 # ──────────────────────────────────────────────
 class App(tk.Tk):
+    """Janela principal que orquestra as três abas e inicializa o banco."""
     def __init__(self):
         super().__init__()
         self.title("Sistema de Cadastro de Alunos – Estácio")
@@ -518,6 +579,7 @@ class App(tk.Tk):
         self._build_ui()
 
     def _build_ui(self):
+        """Constrói o cabeçalho, abas (Notebook) e barra de status."""
         # ── Header
         header = tk.Frame(self, bg=CORES["accent"], height=56)
         header.pack(fill="x")
